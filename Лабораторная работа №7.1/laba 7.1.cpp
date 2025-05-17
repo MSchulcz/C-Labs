@@ -5,7 +5,7 @@
 #include <stdexcept>
 #include <memory>
 
-// Базовый класс Entity
+
 class Entity {
 protected:
     std::string name;
@@ -22,17 +22,14 @@ public:
         std::cout << "Name: " << name << ", Health: " << health << ", Level: " << level;
     }
 
-    // Геттеры для доступа к полям
     std::string getName() const { return name; }
     int getHealth() const { return health; }
     int getLevel() const { return level; }
 
-    // Методы для сериализации
     virtual std::string serialize() const {
         return name + "," + std::to_string(health) + "," + std::to_string(level);
     }
 
-    // Метод для десериализации
     virtual void deserialize(const std::string& data) {
         size_t pos1 = data.find(',');
         size_t pos2 = data.find(',', pos1 + 1);
@@ -47,7 +44,7 @@ public:
     }
 };
 
-// Класс Player, наследующий от Entity
+
 class Player : public Entity {
 private:
     int experience;
@@ -81,7 +78,6 @@ public:
     }
 };
 
-// Класс Enemy, наследующий от Entity
 class Enemy : public Entity {
 private:
     std::string type;
@@ -115,7 +111,6 @@ public:
     }
 };
 
-// Шаблонный класс GameManager для управления сущностями
 template<typename T>
 class GameManager {
 private:
@@ -149,13 +144,13 @@ public:
             throw std::runtime_error("Failed to open file for reading.");
         }
 
-        entities.clear(); // Очищаем текущие сущности
+        entities.clear();
 
         std::string line;
         while (std::getline(file, line)) {
             size_t lastComma = line.rfind(',');
             if (lastComma == std::string::npos) {
-                continue; // Пропускаем некорректные строки
+                continue;
             }
 
             std::string type = line.substr(lastComma + 1);
@@ -166,7 +161,7 @@ public:
             } else if (type == "Enemy") {
                 entity = new Enemy("", 0, 0, "");
             } else {
-                continue; // Неизвестный тип сущности
+                continue;
             }
 
             entity->deserialize(line);
@@ -183,21 +178,17 @@ public:
 
 int main() {
     try {
-        // Создаем менеджер и добавляем несколько персонажей
         GameManager<Entity*> manager;
         manager.addEntity(new Player("Hero", 100, 1, 0));
-        manager.addEntity(new Enemy("Goblin", 30, 1, "Normal"));
         manager.addEntity(new Player("Mage", 80, 2, 150));
         manager.addEntity(new Enemy("Dragon", 200, 5, "Boss"));
 
         std::cout << "Original characters:" << std::endl;
         manager.displayAll();
 
-        // Сохраняем персонажей в файл
         manager.saveToFile("game_save.txt");
         std::cout << "\nCharacters saved to file.\n" << std::endl;
 
-        // Загружаем персонажей из файла в новый менеджер
         GameManager<Entity*> loadedManager;
         loadedManager.loadFromFile("game_save.txt");
 
