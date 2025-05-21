@@ -2,19 +2,10 @@
 #include <string>
 #include <vector>
 #include <fstream>
-#include <memory>
 #include <stdexcept>
-#include <ctime>
-#include <map>
 
 
-class GameException : public std::runtime_error {
-public:
-    explicit GameException(const std::string& message) : std::runtime_error(message) {}
-};
-
-
-template<typename T>
+template <typename T>
 class Logger {
 private:
     std::ofstream logFile;
@@ -22,57 +13,106 @@ public:
     Logger(const std::string& filename) {
         logFile.open(filename, std::ios::app);
         if (!logFile.is_open()) {
-            throw GameException("Failed to open log file!");
+            throw std::runtime_error("Unable to open log file");
         }
     }
-
     ~Logger() {
         if (logFile.is_open()) {
             logFile.close();
         }
     }
-
     void log(const T& message) {
-        time_t now = time(0);
-        char* dt = ctime(&now);
-        dt[strlen(dt)-1] = '\0'; // удаляем символ новой строки
-        logFile << "[" << dt << "] " << message << std::endl;
-        std::cout << message << std::endl;
+        logFile << message << std::endl;
     }
 };
 
 
-class Inventory {
+class Character {
 private:
-    std::map<std::string, int> items;
+    std::string name;
+    int health;
+    int attack;
+    int defense;
+    int level;
+    int experience;
+
 public:
-    void addItem(const std::string& item, int count = 1) {
-        items[item] += count;
-    }
+    Character(const std::string& n, int h, int a, int d)
+        : name(n), health(h), attack(a), defense(d), level(1), experience(0) {}
 
-    void removeItem(const std::string& item, int count = 1) {
-        if (items.find(item) == items.end() || items[item] < count) {
-            throw GameException("Not enough " + item + " in inventory!");
-        }
-        items[item] -= count;
-        if (items[item] <= 0) {
-            items.erase(item);
-        }
-    }
-
-    void display() const {
-        if (items.empty()) {
-            std::cout << "Inventory is empty." << std::endl;
-            return;
-        }
-        std::cout << "Inventory:" << std::endl;
-        for (const auto& item : items) {
-            std::cout << "- " << item.first << ": " << item.second << std::endl;
+    void attackEnemy(Character& enemy, Logger<std::string>& logger) {
+        int damage = attack - enemy.defense;
+        if (damage > 0) {
+            enemy.takeDamage(damage, logger);
+            logger.log(name + " attacks " + enemy.name + " for " + std::to_string(damage) + " damage!");
+        std::cout << name << " атакует " << enemy.name << " и наносит " << damage << " урона!" << std::endl;
+        } else {
+            logger.log(name + " attacks " + enemy.name + ", but it has no effect!");
+        std::cout << name << " атакует " << enemy.name << ", но промахивается!" << std::endl;
         }
     }
 
-    bool hasItem(const std::string& item) const {
-        return items.find(item) != items.end();
+    void takeDamage(int damage, Logger<std::string>& logger) {
+        health -= damage;
+        if (health < 0) {
+            health = 0;
+            logger.log(name + " был убит!");
+            throw std::runtime_error(name + " health dropped below zero!");
+        }
+    }
+
+    void heal(int amount, Logger<std::string>& logger) {
+        health += amount;
+        if (health > 100) health = 100;
+        logger.log(name + " восстанавливает " + std::to_string(amount) + " здоровья!");
+        std::cout << name << " восстанавливает " << amount << " здоровья!" << std::endl;
+    }
+
+    void gainExperience(int exp, Logger<std::string>& logger) {
+        experience += exp;
+        if (experience >= 100) {
+            level++;
+            experience -= 100;
+        logger.log(name + " повысил уровень до " + std::to_string(level) + "!");
+        std::cout << name << " повысил уровень до " << level << "!" << std::endl;
+        }
+    }
+
+    void displayInfo() const {
+        std::cout << "Имя: " << name << ", Здоровье: " << health
+                  << ", Атака: " << attack << ", Защита: " << defense
+                  << ", Уровень: " << level << ", Опыт: " << experience << std::endl;
+    }
+
+    std::string getName() const {
+        return name;
+    }
+
+    int getHealth() const {
+        return health;
+    }
+
+    int getAttack() const {
+        return attack;
+    }
+
+    int getDefense() const {
+        return defense;
+    }
+
+    int getLevel() const {
+        return level;
+    }
+
+    int getExperience() const {
+        return experience;
+    }
+
+    void setHealth(int h) {
+        if (h < 0) {
+            throw std::invalid_argument("Health cannot be negative");
+        }
+        health = h;
     }
 };
 
@@ -83,337 +123,299 @@ protected:
     int health;
     int attack;
     int defense;
+
 public:
-    Monster(const std::string& n, int h, int a, int d) 
+    Monster(const std::string& n, int h, int a, int d)
         : name(n), health(h), attack(a), defense(d) {}
 
-    virtual ~Monster() = default;
+    virtual ~Monster() {}
 
-    virtual void attackTarget(Character& target) {
-        int damage = attack - target.getDefense();
+    virtual void attackEnemy(Character& enemy, Logger<std::string>& logger) {
+        int damage = attack - enemy.getDefense();
         if (damage > 0) {
-            target.takeDamage(damage);
-            std::cout << name << " attacks " << target.getName() << " for " << damage << " damage!" << std::endl;
+            enemy.setHealth(enemy.getHealth() - damage);
+            logger.log(name + " attacks " + enemy.getName() + " for " + std::to_string(damage) + " damage!");
+        std::cout << name << " атакует " << enemy.getName() << " и наносит " << damage << " урона!" << std::endl;
         } else {
-            std::cout << name << " attacks " << target.getName() << ", but it has no effect!" << std::endl;
-        }
-    }
-
-    void takeDamage(int damage) {
-        health -= damage;
-        if (health <= 0) {
-            throw GameException(name + " has been defeated!");
+            logger.log(name + " attacks " + enemy.getName() + ", but it has no effect!");
+        std::cout << name << " атакует " << enemy.getName() << ", но это неэффективно!" << std::endl;
         }
     }
 
     virtual void displayInfo() const {
-        std::cout << "Monster: " << name << ", HP: " << health 
+        std::cout << "Monster: " << name << ", HP: " << health
                   << ", Attack: " << attack << ", Defense: " << defense << std::endl;
     }
 
-    std::string getName() const { return name; }
-    int getHealth() const { return health; }
-    int getAttack() const { return attack; }
-    int getDefense() const { return defense; }
+    std::string getName() const {
+        return name;
+    }
+
+    int getHealth() const {
+        return health;
+    }
+
+    void setHealth(int h) {
+        if (h < 0) {
+            throw std::invalid_argument("Health cannot be negative");
+        }
+        health = h;
+    }
+
+    int getAttack() const {
+        return attack;
+    }
+
+    int getDefense() const {
+        return defense;
+    }
 };
 
 
-class Goblin : public Monster {
+class Trol : public Monster {
 public:
-    Goblin() : Monster("Goblin", 30, 8, 3) {}
+    Trol() : Monster("Троль", 30, 10, 5) {}
 };
 
 class Dragon : public Monster {
 public:
-    Dragon() : Monster("Dragon", 100, 20, 10) {}
+    Dragon() : Monster("Дракон", 100, 25, 15) {}
 };
 
-class Skeleton : public Monster {
+class Ogr : public Monster {
 public:
-    Skeleton() : Monster("Skeleton", 40, 10, 5) {
-        // Скелеты имеют бонус к атаке после первого удара
-        attack += 5;
-    }
-
-    void attackTarget(Character& target) override {
-        Monster::attackTarget(target);
-        // После первой атаки бонус исчезает
-        if (attack > 15) {
-            attack -= 5;
-            std::cout << name << "'s bonus attack fades!" << std::endl;
-        }
-    }
+    Ogr() : Monster("Огр", 50, 15, 10) {}
 };
 
 
-class Character {
+class Inventory {
 private:
-    std::string name;
-    int maxHealth;
-    int health;
-    int attack;
-    int defense;
-    int level;
-    int experience;
-    Inventory inventory;
+    std::vector<std::string> items;
 
 public:
-    Character(const std::string& n, int h, int a, int d)
-        : name(n), maxHealth(h), health(h), attack(a), defense(d), level(1), experience(0) {}
+    void addItem(const std::string& item) {
+        items.push_back(item);
+        std::cout << item << " добавлен в инвентарь." << std::endl;
+    }
 
-    void attackEnemy(Monster& enemy) {
-        int damage = attack - enemy.getDefense();
-        if (damage > 0) {
-            enemy.takeDamage(damage);
-            std::cout << name << " attacks " << enemy.getName() << " for " << damage << " damage!" << std::endl;
-        } else {
-            std::cout << name << " attacks " << enemy.getName() << ", but it has no effect!" << std::endl;
+    void removeItem(const std::string& item) {
+        for (auto it = items.begin(); it != items.end(); ++it) {
+            if (*it == item) {
+                items.erase(it);
+        std::cout << item << " удалён из инвентаря." << std::endl;
+                return;
+            }
         }
-    }
-
-    void takeDamage(int damage) {
-        health -= damage;
-        if (health <= 0) {
-            throw GameException(name + " has been defeated!");
-        }
-    }
-
-    void heal(int amount) {
-        health += amount;
-        if (health > maxHealth) health = maxHealth;
-        std::cout << name << " heals for " << amount << " HP!" << std::endl;
-    }
-
-    void usePotion() {
-        if (inventory.hasItem("Health Potion")) {
-            inventory.removeItem("Health Potion");
-            heal(30);
-        } else {
-            throw GameException("No health potions in inventory!");
-        }
-    }
-
-    void gainExperience(int exp) {
-        experience += exp;
-        if (experience >= 100) {
-            levelUp();
-        }
-    }
-
-    void levelUp() {
-        level++;
-        experience -= 100;
-        maxHealth += 20;
-        health = maxHealth;
-        attack += 5;
-        defense += 3;
-        std::cout << name << " leveled up to level " << level << "!" << std::endl;
-    }
-
-    void addToInventory(const std::string& item, int count = 1) {
-        inventory.addItem(item, count);
-    }
-
-    void displayInfo() const {
-        std::cout << "Character: " << name << ", HP: " << health << "/" << maxHealth
-                  << ", Attack: " << attack << ", Defense: " << defense
-                  << ", Level: " << level << ", Experience: " << experience << "/100" << std::endl;
+        std::cout << item << " не найден в инвентаре." << std::endl;
     }
 
     void displayInventory() const {
-        inventory.display();
-    }
-
-    // Методы для сохранения и загрузки
-    void saveToFile(const std::string& filename) const {
-        std::ofstream file(filename);
-        if (!file) {
-            throw GameException("Failed to save game!");
+        std::cout << "Инвентарь:" << std::endl;
+        for (const auto& item : items) {
+            std::cout << "- " << item << std::endl;
         }
-        file << name << "\n" << maxHealth << "\n" << health << "\n" 
-             << attack << "\n" << defense << "\n" << level << "\n" << experience << "\n";
     }
-
-    void loadFromFile(const std::string& filename) {
-        std::ifstream file(filename);
-        if (!file) {
-            throw GameException("Failed to load game!");
-        }
-        file >> name >> maxHealth >> health >> attack >> defense >> level >> experience;
-    }
-
-    std::string getName() const { return name; }
-    int getHealth() const { return health; }
-    int getMaxHealth() const { return maxHealth; }
-    int getAttack() const { return attack; }
-    int getDefense() const { return defense; }
-    int getLevel() const { return level; }
-    int getExperience() const { return experience; }
 };
 
 
 class Game {
 private:
-    std::unique_ptr<Character> player;
+    Character player;
+    Inventory inventory;
     Logger<std::string> logger;
-    bool gameRunning;
-
-    void createCharacter() {
-        std::string name;
-        std::cout << "Enter your character's name: ";
-        std::cin >> name;
-        player = std::make_unique<Character>(name, 100, 10, 5);
-        player->addToInventory("Health Potion", 3);
-        logger.log("Character " + name + " created.");
-    }
-
-    void battle(std::unique_ptr<Monster> monster) {
-        logger.log("A wild " + monster->getName() + " appears!");
-        
-        while (true) {
-            // Ход игрока
-            try {
-                playerTurn(*monster);
-                if (monster->getHealth() <= 0) {
-                    int exp = 20 + monster->getAttack() * 2;
-                    player->gainExperience(exp);
-                    logger.log("You defeated the " + monster->getName() + " and gained " + std::to_string(exp) + " XP!");
-                    return;
-                }
-            } catch (const GameException& e) {
-                logger.log(e.what());
-                gameRunning = false;
-                return;
-            }
-
-            // Ход монстра
-            try {
-                monster->attackTarget(*player);
-                if (player->getHealth() <= 0) {
-                    logger.log("Game Over! You were defeated by the " + monster->getName() + ".");
-                    gameRunning = false;
-                    return;
-                }
-            } catch (const GameException& e) {
-                logger.log(e.what());
-                return;
-            }
-        }
-    }
-
-    void playerTurn(Monster& monster) {
-        int choice;
-        std::cout << "\n=== Your Turn ===" << std::endl;
-        player->displayInfo();
-        monster.displayInfo();
-        std::cout << "1. Attack\n2. Use Health Potion\n3. Check Inventory\n4. Flee\nChoose an action: ";
-        std::cin >> choice;
-
-        switch (choice) {
-            case 1:
-                player->attackEnemy(monster);
-                break;
-            case 2:
-                try {
-                    player->usePotion();
-                } catch (const GameException& e) {
-                    logger.log(e.what());
-                    playerTurn(monster); // Повторный ход
-                }
-                break;
-            case 3:
-                player->displayInventory();
-                playerTurn(monster); // Повторный ход
-                break;
-            case 4:
-                if (rand() % 2 == 0) {
-                    logger.log("You successfully fled from battle!");
-                    return;
-                } else {
-                    logger.log("You failed to flee!");
-                }
-                break;
-            default:
-                std::cout << "Invalid choice!" << std::endl;
-                playerTurn(monster); // Повторный ход
-        }
-    }
-
-    std::unique_ptr<Monster> generateMonster() {
-        int monsterType = rand() % 3;
-        switch (monsterType) {
-            case 0: return std::make_unique<Goblin>();
-            case 1: return std::make_unique<Dragon>();
-            case 2: return std::make_unique<Skeleton>();
-            default: return std::make_unique<Goblin>();
-        }
-    }
 
 public:
-    Game() : logger("game_log.txt"), gameRunning(false) {
-        srand(time(0));
-    }
+    Game(const std::string& playerName)
+        : player(playerName, 100, 20, 10), logger("game_log.txt") {}
 
     void start() {
-        gameRunning = true;
-        createCharacter();
-        logger.log("Game started!");
+        std::cout << "Добро пожаловать в RPG игру Dota 3, " << player.getName() << "!" << std::endl;
+        player.displayInfo();
+        inventory.displayInventory();
+    }
 
-        while (gameRunning) {
-            std::cout << "\n=== Main Menu ===" << std::endl;
-            std::cout << "1. Explore\n2. Rest\n3. Check Stats\n4. Check Inventory\n5. Save Game\n6. Load Game\n7. Quit\nChoose an action: ";
-            int choice;
-            std::cin >> choice;
+    void battle(Monster& monster) {
+        std::cout << "На пути героя появился " << monster.getName() << "!" << std::endl;
+        monster.displayInfo();
+
+        while (player.getHealth() > 0 && monster.getHealth() > 0) {
+            try {
+                int damage = player.getAttack() - monster.getDefense();
+                if (damage > 0) {
+                    monster.setHealth(monster.getHealth() - damage);
+                    logger.log(player.getName() + " attacks " + monster.getName() + " for " + std::to_string(damage) + " damage!");
+                std::cout << player.getName() << " атакует " << monster.getName() << " и наносит " << damage << " урона!" << std::endl;
+                } else {
+                    logger.log(player.getName() + " attacks " + monster.getName() + ", but it has no effect!");
+                std::cout << player.getName() << " атакует " << monster.getName() << ", но промахивается!" << std::endl;
+                }
+            } catch (const std::exception& e) {
+            std::cout << e.what() << std::endl;
+            break;
+            }
+
+            if (monster.getHealth() <= 0) {
+                std::cout << monster.getName() << " убит!" << std::endl;
+                player.gainExperience(50, logger);
+                break;
+            }
 
             try {
-                switch (choice) {
-                    case 1: {
-                        if (rand() % 3 == 0) {
-                            battle(generateMonster());
-                        } else {
-                            logger.log("You explore but find nothing interesting.");
-                        }
-                        break;
-                    }
-                    case 2:
-                        player->heal(20);
-                        logger.log("You rest and recover some health.");
-                        break;
-                    case 3:
-                        player->displayInfo();
-                        break;
-                    case 4:
-                        player->displayInventory();
-                        break;
-                    case 5:
-                        player->saveToFile("save.txt");
-                        logger.log("Game saved successfully.");
-                        break;
-                    case 6:
-                        player->loadFromFile("save.txt");
-                        logger.log("Game loaded successfully.");
-                        break;
-                    case 7:
-                        gameRunning = false;
-                        logger.log("Game ended.");
-                        break;
-                    default:
-                        std::cout << "Invalid choice!" << std::endl;
-                }
-            } catch (const GameException& e) {
-                logger.log(e.what());
+                monster.attackEnemy(player, logger);
+            } catch (const std::exception& e) {
+                std::cout << e.what() << std::endl;
+                break;
+            }
+
+            if (player.getHealth() <= 0) {
+                std::cout << player.getName() << " пал смертью героя!" << std::endl;
+                break;
             }
         }
+    }
+
+    void saveGame(const std::string& filename) {
+        std::ofstream saveFile(filename);
+        if (!saveFile) {
+        std::cout << "Не удалось открыть файл сохранения." << std::endl;
+        return;
+        }
+        saveFile << player.getName() << std::endl;
+        saveFile << player.getHealth() << std::endl;
+        saveFile << player.getAttack() << std::endl;
+        saveFile << player.getDefense() << std::endl;
+        saveFile << player.getLevel() << std::endl;
+        saveFile << player.getExperience() << std::endl;
+        std::cout << "Игра сохранена в " << filename << std::endl;
+    }
+
+    void loadGame(const std::string& filename) {
+        std::ifstream loadFile(filename);
+        if (!loadFile) {
+        std::cout << "Не удалось открыть файл сохранения." << std::endl;
+        return;
+        }
+        std::string name;
+        int health, attack, defense, level, experience;
+        loadFile >> name >> health >> attack >> defense >> level >> experience;
+        player = Character(name, health, attack, defense);
+        try {
+            player.setHealth(health);
+        } catch (const std::exception& e) {
+        std::cout << "Ошибка при установке здоровья: " << e.what() << std::endl;
+        }
+        std::cout << "Загружен уровень игрока: " << level << ", опыт: " << experience << std::endl;
+        std::cout << "Игра загружена из " << filename << std::endl;
+    }
+
+    void showInventory() const {
+        inventory.displayInventory();
+    }
+
+    void addItemToInventory(const std::string& item) {
+        inventory.addItem(item);
+    }
+
+    void removeItemFromInventory(const std::string& item) {
+        inventory.removeItem(item);
+    }
+
+    std::string getPlayerName() const {
+        return player.getName();
+    }
+
+    int getPlayerHealth() const {
+        return player.getHealth();
     }
 };
 
 int main() {
     try {
-        Game game;
+        Game game("Hero");
         game.start();
+
+        bool running = true;
+        while (running) {
+            std::cout << "\n----------------\n";
+            std::cout << "\nВыберите действие:\n";
+            std::cout << "1. Сразиться с гоблином\n";
+            std::cout << "2. Сразиться с скелетом\n";
+            std::cout << "3. Сразиться с драконом\n";
+            std::cout << "4. Показать инвентарь\n";
+            std::cout << "5. Добавить предмет в инвентарь\n";
+            std::cout << "6. Удалить предмет из инвентаря\n";
+            std::cout << "7. Сохранить игру\n";
+            std::cout << "8. Загрузить игру\n";
+            std::cout << "9. Выйти\n";
+            std::cout << "Введите выбор: ";
+            std::cout << "\n----------------\n";
+
+            int choice;
+            std::cin >> choice;
+
+            switch (choice) {
+                case 1: {
+                    Trol trol;
+                    game.battle(trol);
+                    break;
+                }
+                case 2: {
+                    Ogr ogr;
+                    game.battle(ogr);
+                    break;
+                }
+                case 3: {
+                    Dragon dragon;
+                    game.battle(dragon);
+                    break;
+                }
+                case 4: {
+                    game.showInventory();
+                    break;
+                }
+                case 5: {
+                    std::cout << "Введите предмет для добавления: ";
+                    std::string item;
+                    std::cin.ignore();
+                    std::getline(std::cin, item);
+                    game.addItemToInventory(item);
+                    break;
+                }
+                case 6: {
+                    std::cout << "Введите предмет для удаления: ";
+                    std::string item;
+                    std::cin.ignore();
+                    std::getline(std::cin, item);
+                    game.removeItemFromInventory(item);
+                    break;
+                }
+                case 7: {
+                    std::cout << "Введите имя файла для сохранения игры: ";
+                    std::string filename;
+                    std::cin >> filename;
+                    game.saveGame(filename);
+                    break;
+                }
+                case 8: {
+                    std::cout << "Введите имя файла для загрузки игры: ";
+                    std::string filename;
+                    std::cin >> filename;
+                    game.loadGame(filename);
+                    break;
+                }
+                case 9: {
+                    running = false;
+                    std::cout << "Выход из игры. До свидания!" << std::endl;
+                    break;
+                }
+                default: {
+                    std::cout << "Неверный выбор. Пожалуйста, попробуйте снова." << std::endl;
+                    break;
+                }
+            }
+        }
     } catch (const std::exception& e) {
-        std::cerr << "Fatal error: " << e.what() << std::endl;
-        return 1;
+        std::cerr << "Error: " << e.what() << std::endl;
     }
     return 0;
 }
